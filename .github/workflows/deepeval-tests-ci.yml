@@ -17,11 +17,16 @@ on:
 
 env:
   # DeepEval judge: local Ollama on the runner.
-  # OLLAMA_BASE_URL is deliberately NOT set job-wide, because DeepEval's
-  # Ollama provider reads it and would call the backend's URL instead of localhost.
+  # OLLAMA_BASE_URL / OLLAMA_API_KEY are deliberately NOT set job-wide,
+  # because DeepEval's Ollama provider would read them and call the backend's URL.
   JUDGE_MODEL: qwen2.5:7b
   OLLAMA_HOST: http://localhost:11434
   DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+  # Judge configuration (satisfies DeepEval's LocalModel path)
+  LOCAL_MODEL_NAME: qwen2.5:7b
+  LOCAL_MODEL_BASE_URL: http://localhost:11434/v1
+  LOCAL_MODEL_API_KEY: ollama
+  USE_LOCAL_MODEL: "YES"
 
 jobs:
   deepeval:
@@ -54,7 +59,6 @@ jobs:
       - name: Install and start Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          # The installer may already start a service; only start manually if needed
           if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
             nohup ollama serve > ollama.log 2>&1 &
           fi
