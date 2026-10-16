@@ -16,14 +16,22 @@ on:
   workflow_dispatch:
 
 env:
+  # Backend (passed to docker compose; docker-compose.yml must forward these)
   OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
   OLLAMA_BASE_URL: ${{ secrets.OLLAMA_BASE_URL }}
-  # OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  # DeepEval judge: local Ollama on the runner (OpenAI-compatible endpoint)
+  LOCAL_MODEL_NAME: qwen2.5:7b
+  LOCAL_MODEL_BASE_URL: http://localhost:11434/v1
+  LOCAL_MODEL_API_KEY: ollama
+  USE_LOCAL_MODEL: "YES"
+  # Skip DeepEval/Confident AI telemetry noise
+  DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
 
 jobs:
   deepeval:
     name: DeepEval LLM Evaluation
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -45,19 +53,26 @@ jobs:
       - name: Install and start Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
-          # Wait for Ollama service to boot up
-          sleep 5
+          # The installer may already start a service; only start manually if needed
+          if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+            nohup ollama serve > ollama.log 2>&1 &
+          fi
+          echo "Waiting for Ollama to be ready..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "Ollama is ready."
+              break
+            fi
+            sleep 2
+          done
 
       - name: Pull Ollama judge model
-        run: |
-          # Replace 'llama3.2' or 'qwen2.5:3b' with your desired model
-          ollama pull llama3.2
+        run: ollama pull ${{ env.LOCAL_MODEL_NAME }}
 
       - name: Configure DeepEval to use Ollama
-        run: |
-          deepeval set-ollama --model=llama3.2 --base-url="http://localhost:11434"
-          
+        working-directory: deepeval-tests
+        run: deepeval set-ollama --model=${{ env.LOCAL_MODEL_NAME }} --base-url="http://localhost:11434"
+
       - name: Wait for backend to be ready
         run: |
           echo "Waiting for backend to be ready..."
@@ -88,6 +103,10 @@ jobs:
       - name: Run DeepEval intent tests
         working-directory: deepeval-tests
         run: deepeval test run test_intent.py -v
+
+      - name: Show Ollama log on failure
+        if: failure()
+        run: cat ollama.log || true
 
       - name: Tear down backend
         if: always()
