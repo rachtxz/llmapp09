@@ -19,12 +19,11 @@ env:
   # Backend (passed to docker compose; docker-compose.yml must forward these)
   OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
   OLLAMA_BASE_URL: ${{ secrets.OLLAMA_BASE_URL }}
-  # DeepEval judge: local Ollama on the runner (OpenAI-compatible endpoint)
+  # DeepEval judge: local Ollama on the runner
   LOCAL_MODEL_NAME: qwen2.5:7b
   LOCAL_MODEL_BASE_URL: http://localhost:11434/v1
   LOCAL_MODEL_API_KEY: ollama
   USE_LOCAL_MODEL: "YES"
-  # Skip DeepEval/Confident AI telemetry noise
   DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
 
 jobs:
@@ -46,6 +45,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r deepeval-tests/requirements.txt
+          pip install ollama
 
       - name: Build and start backend
         run: docker compose up -d llm-multiroute
