@@ -16,14 +16,11 @@ on:
   workflow_dispatch:
 
 env:
-  # Backend (passed to docker compose; docker-compose.yml must forward these)
-  OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-  OLLAMA_BASE_URL: ${{ secrets.OLLAMA_BASE_URL }}
-  # DeepEval judge: local Ollama on the runner
-  LOCAL_MODEL_NAME: qwen2.5:7b
-  LOCAL_MODEL_BASE_URL: http://localhost:11434/v1
-  LOCAL_MODEL_API_KEY: ollama
-  USE_LOCAL_MODEL: "YES"
+  # DeepEval judge: local Ollama on the runner.
+  # OLLAMA_BASE_URL is deliberately NOT set job-wide, because DeepEval's
+  # Ollama provider reads it and would call the backend's URL instead of localhost.
+  JUDGE_MODEL: qwen2.5:7b
+  OLLAMA_HOST: http://localhost:11434
   DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
 
 jobs:
@@ -47,7 +44,11 @@ jobs:
           pip install -r deepeval-tests/requirements.txt
           pip install ollama
 
+      # Backend secrets are scoped to this step only
       - name: Build and start backend
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_BASE_URL: ${{ secrets.OLLAMA_BASE_URL }}
         run: docker compose up -d llm-multiroute
 
       - name: Install and start Ollama
@@ -67,11 +68,19 @@ jobs:
           done
 
       - name: Pull Ollama judge model
-        run: ollama pull ${{ env.LOCAL_MODEL_NAME }}
+        run: ollama pull ${{ env.JUDGE_MODEL }}
+
+      - name: Verify judge model
+        run: |
+          ollama list
+          curl -s http://localhost:11434/api/chat \
+            -d '{"model":"${{ env.JUDGE_MODEL }}","messages":[{"role":"user","content":"hi"}],"stream":false}' \
+            | head -c 300
+          echo
 
       - name: Configure DeepEval to use Ollama
         working-directory: deepeval-tests
-        run: deepeval set-ollama --model=${{ env.LOCAL_MODEL_NAME }} --base-url="http://localhost:11434"
+        run: deepeval set-ollama --model=${{ env.JUDGE_MODEL }} --base-url="http://localhost:11434"
 
       - name: Wait for backend to be ready
         run: |
